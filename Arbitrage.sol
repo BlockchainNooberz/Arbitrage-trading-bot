@@ -8,6 +8,7 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 contract Arbitrage is IFlashLoanRecipient {
     IVault private constant vault =
         IVault(0xBA12222222228d8Ba445958a75a0704d566BF2C8);
+
     IUniswapV2Router02 public immutable sRouter;
     IUniswapV2Router02 public immutable uRouter;
     address public owner;
