@@ -11,7 +11,7 @@ const V2_FACTORY_TO_USE = uFactory
 const V2_ROUTER_TO_USE = uRouter
 
 const UNLOCKED_ACCOUNT = '0xdEAD000000000000000042069420694206942069' // SHIB account to impersonate 
-const AMOUNT = '40500000000000' // 40,500,000,000,000 SHIB -- Tokens will automatically be converted to wei
+const AMOUNT = '50000000' // 50,000,000 SHIB -- Tokens will automatically be converted to wei
 
 async function main() {
   // Fetch contracts
@@ -46,7 +46,7 @@ async function manipulatePrice(_path, _token0Contract) {
   console.log(`Input Token: ${_path[0].symbol}`)
   console.log(`Output Token: ${_path[1].symbol}\n`)
 
-  const amount = hre.ethers.parseUnits(AMOUNT, 'ether')
+  const amount = hre.ethers.parseUnits(AMOUNT, _path[0].decimals);
   const path = [_path[0].address, _path[1].address]
   const deadline = Math.floor(Date.now() / 1000) + 60 * 20 // 20 minutes
 
