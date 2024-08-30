@@ -1,18 +1,11 @@
-const hre = require("hardhat")
-require("dotenv").config()
+const hre = require("hardhat");
+require("dotenv").config();
 
-/**
- * This file could be used for initializing some
- * of the main contracts such as the V2 router & 
- * factory. This is also where we initialize the
- * main Arbitrage contract.
- */
+const config = require('../config.json');
+const IUniswapV2Router02 = require('@uniswap/v2-periphery/build/IUniswapV2Router02.json');
+const IUniswapV2Factory = require("@uniswap/v2-core/build/IUniswapV2Factory.json");
 
-const config = require('../config.json')
-const IUniswapV2Router02 = require('@uniswap/v2-periphery/build/IUniswapV2Router02.json')
-const IUniswapV2Factory = require("@uniswap/v2-core/build/IUniswapV2Factory.json")
-
-let provider
+let provider;
 
 if (config.PROJECT_SETTINGS.isLocal) {
   provider = new hre.ethers.WebSocketProvider(`ws://127.0.0.1:8545/`)
