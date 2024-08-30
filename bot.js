@@ -4,16 +4,36 @@ require("dotenv").config();
 
 const ethers = require("ethers")
 const config = require('./config.json')
-const { getTokenAndContract, getPairContract, getReserves, calculatePrice, simulate } = require('./helpers/helpers')
-const { provider, uFactory, uRouter, sFactory, sRouter, arbitrage } = require('./helpers/initialization')
+const { 
+  getTokenAndContract,
+  getPairContract,
+  getReserves,
+  checkLiquidity,
+  calculatePrice,
+  calculateDifference,
+  simulate,
+  applySlippageTolerance,
+  calculateProfit,
+  isProfitAboveThreshold 
+} = require('./helpers/helpers')
+
+const { 
+  provider, 
+  uFactory, 
+  uRouter, 
+  sFactory, 
+  sRouter, 
+  arbitrage 
+} = require('./helpers/initialization')
 
 // -- .ENV VALUES HERE -- //
-const arbFor = process.env.ARB_FOR // This is the address of token we are attempting to arbitrage (WETH)
-const arbAgainst = process.env.ARB_AGAINST // SHIB
-const units = process.env.UNITS // Used for price display/reporting
+const arbFor = process.env.ARB_FOR 
+const arbAgainst = process.env.ARB_AGAINST 
+const units = process.env.UNITS
 const difference = process.env.PRICE_DIFFERENCE
 const gasLimit = process.env.GAS_LIMIT
 const gasPrice = process.env.GAS_PRICE
+const minProfitThreshold = process.env.MIN_PROFIT_THRESHOLD
 
 let uPair, sPair, amount
 let isExecuting = false
@@ -135,57 +155,49 @@ const determineDirection = async (_priceDifference) => {
 const determineProfitability = async (_routerPath, _token0Contract, _token0, _token1) => {
   console.log(`Determining Profitability...\n`)
 
-  // This is where you can customize your conditions on whether a profitable trade is possible...
-
   let exchangeToBuy, exchangeToSell
+  let pairToCheck
 
   if (await _routerPath[0].getAddress() === await uRouter.getAddress()) {
     exchangeToBuy = "Uniswap"
     exchangeToSell = "Sushiswap"
+    pairToCheck = uPair
   } else {
     exchangeToBuy = "Sushiswap"
     exchangeToSell = "Uniswap"
+    pairToCheck = sPair
   }
 
-  /**
-   * The helper file has quite a few functions that come in handy
-   * for performing specifc tasks. Below we call the getReserves()
-   * function in the helper to get the reserves of a pair.
-   */
+  const uReserves = await getReserves(uPair);
+  const sReserves = await getReserves(sPair);
 
-  const uReserves = await getReserves(uPair)
-  const sReserves = await getReserves(sPair)
+  // Find the smaller reserve between Uniswap and Sushiswap
+  const minReserve = uReserves[0] < sReserves[0] ? uReserves[0] : sReserves[0];
 
-  let minAmount
+  // Calculate minAmount as 3% of the smaller reserve
+  const tradePercentage = 3; // Adjust this percentage as needed
+  let minAmount = BigInt(minReserve) * BigInt(tradePercentage) / BigInt(100);
 
-  if (uReserves[0] > sReserves[0]) {
-    minAmount = BigInt(sReserves[0]) / BigInt(2)
-  } else {
-    minAmount = BigInt(uReserves[0]) / BigInt(2)
+  const liquidityCheck = await checkLiquidity(pairToCheck, _token0, minAmount);
+
+  if (!liquidityCheck) {
+    console.log(`Liquidity Check Failed.\n`);
+    return false;
   }
 
   try {
-
-    /**
-     * See getAmountsIn & getAmountsOut:
-     * - https://docs.uniswap.org/contracts/v2/reference/smart-contracts/library#getamountsin
-     * - https://docs.uniswap.org/contracts/v2/reference/smart-contracts/library#getamountsout
-     */
-
-    // This returns the amount of WETH needed to swap for X amount of SHIB
     const estimate = await _routerPath[0].getAmountsIn(minAmount, [_token0.address, _token1.address])
 
-    // This returns the amount of WETH for swapping X amount of SHIB
     const result = await _routerPath[1].getAmountsOut(estimate[1], [_token1.address, _token0.address])
 
-    console.log(`Estimated amount of WETH needed to buy enough Shib on ${exchangeToBuy}\t\t| ${ethers.formatUnits(estimate[0], 'ether')}`)
-    console.log(`Estimated amount of WETH returned after swapping SHIB on ${exchangeToSell}\t| ${ethers.formatUnits(result[1], 'ether')}\n`)
+    console.log(`Estimated amount of WETH needed to buy enough Pepe on ${exchangeToBuy}\t\t| ${ethers.formatUnits(estimate[0], 'ether')}`)
+    console.log(`Estimated amount of WETH returned after swapping Pepe on ${exchangeToSell}\t| ${ethers.formatUnits(result[1], 'ether')}\n`)
 
-    const { amountIn, amountOut } = await simulate(estimate[0], _routerPath, _token0, _token1)
+    const { amountIn, amountOut } = await simulate(estimate[0], minAmount, _routerPath, _token0, _token1)
     const amountDifference = amountOut - amountIn
     const estimatedGasCost = gasLimit * gasPrice
+    const profit = await calculateProfit(amountIn, amountOut, gasLimit, gasPrice)
 
-    // Fetch account
     const account = new ethers.Wallet(process.env.PRIVATE_KEY, provider)
 
     const ethBalanceBefore = ethers.formatUnits(await provider.getBalance(account.address), 'ether')
@@ -210,16 +222,19 @@ const determineProfitability = async (_routerPath, _token0Contract, _token0, _to
     console.table(data)
     console.log()
 
-    if (Number(amountOut) < Number(amountIn)) {
+    const profitAboveThreshold = await isProfitAboveThreshold(profit, minProfitThreshold)
+
+    if (!profitAboveThreshold) {
+      console.log(`Profit below threshold.\n`)
       return false
     }
 
-    amount = ethers.parseUnits(amountIn, 'ether')
+    amount = applySlippageTolerance(amountIn, slippageTolerance)
     return true
 
   } catch (error) {
     console.log(error)
-    console.log(`\nError occured while trying to determine profitability...\n`)
+    console.log(`\nError occurred while trying to determine profitability...\n`)
     console.log(`This can typically happen because of liquidity issues, see README for more information.\n`)
     return false
   }
