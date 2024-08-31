@@ -1,34 +1,43 @@
 const { ethers } = require("ethers")
-const { parseUnits, formatUnits, BigNumber } = ethers
 const Big = require('big.js')
 const IUniswapV2Pair = require("@uniswap/v2-core/build/IUniswapV2Pair.json")
 const IERC20 = require('@openzeppelin/contracts/build/contracts/ERC20.json')
 
+// Convert human-readable value to smallest unit
+function parseUnits(value, decimals = 18) {
+  return BigInt(Big(value).times(Big(10).pow(decimals)).toFixed(0));
+}
+
+// Convert smallest unit value to human-readable
+function formatUnits(value, decimals = 18) {
+  return Big(value.toString()).div(Big(10).pow(decimals)).toString();
+}
+
 async function getTokenAndContract(_token0Address, _token1Address, _provider) {
-  console.log(`Attempting to get token contracts for addresses: ${_token0Address}, ${_token1Address}`)
+  console.log(`Attempting to get token contracts for addresses: ${_token0Address}, ${_token1Address}`);
   
-  const token0Contract = new ethers.Contract(_token0Address, IERC20.abi, _provider)
-  const token1Contract = new ethers.Contract(_token1Address, IERC20.abi, _provider)
+  const token0Contract = new ethers.Contract(_token0Address, IERC20.abi, _provider);
+  const token1Contract = new ethers.Contract(_token1Address, IERC20.abi, _provider);
 
   const token0 = {
     address: _token0Address,
     decimals: 18,
     symbol: await token0Contract.symbol(),
     name: await token0Contract.name()
-  }
+  };
 
-  console.log(`Token 0 details successfully retrieved:`, token0)
+  console.log(`Token 0 details successfully retrieved:`, token0);
 
   const token1 = {
     address: _token1Address,
     decimals: 18,
     symbol: await token1Contract.symbol(),
     name: await token1Contract.name()
-  }
+  };
 
-  console.log(`Token 1 details successfully retrieved:`, token1)
+  console.log(`Token 1 details successfully retrieved:`, token1);
 
-  return { token0Contract, token1Contract, token0, token1 }
+  return { token0Contract, token1Contract, token0, token1 };
 }
 
 async function getPairAddress(_V2Factory, _token0, _token1) {
@@ -48,7 +57,7 @@ async function getPairContract(_V2Factory, _token0, _token1, _provider) {
 
   try {
     const pairAddress = await getPairAddress(_V2Factory, _token0, _token1);
-    const pairContract = new ethers.Contract(pairAddress, IUniswapV2Pair.abi, _provider); 
+    const pairContract = new ethers.Contract(pairAddress, IUniswapV2Pair.abi, _provider);
 
     console.log(`Pair contract successfully created for address: ${pairAddress}`);
 
@@ -83,9 +92,9 @@ async function checkLiquidity(_pairContract, _tokenAddress, _amountIn) {
     const [reserve0, reserve1] = reserves;
     const reserve = _tokenAddress === _pairContract.token0 ? reserve0 : reserve1;
 
-    console.log(`Liquidity check: Reserve=<span class="math-inline">\{reserve\.toString\(\)\}, Amount In\=</span>{_amountIn.toString()}`);
+    console.log(`Liquidity check: Reserve=${reserve.toString()}, Amount In=${_amountIn.toString()}`);
 
-    if (Big(reserve).lt(_amountIn)) {
+    if (Big(reserve.toString()).lt(Big(_amountIn.toString()))) {
       console.error(`Insufficient liquidity: ${reserve.toString()} available, ${_amountIn.toString()} required.`);
       return false;
     }
@@ -103,7 +112,7 @@ async function calculatePrice(_pairContract) {
 
   try {
     const [reserve0, reserve1] = await getReserves(_pairContract);
-    const price = Big(reserve0).div(Big(reserve1));
+    const price = Big(reserve0.toString()).div(Big(reserve1.toString()));
     console.log(`Price successfully calculated: ${price.toString()}`);
 
     return price;
@@ -114,10 +123,10 @@ async function calculatePrice(_pairContract) {
 }
 
 async function calculateDifference(_uPrice, _sPrice) {
-  console.log(`Attempting to calculate price difference: Uniswap Price=<span class="math-inline">\{\_uPrice\}, Sushiswap Price\=</span>{_sPrice}`);
+  console.log(`Attempting to calculate price difference: Uniswap Price=${_uPrice}, Sushiswap Price=${_sPrice}`);
 
   try {
-    const difference = (((_uPrice - _sPrice) / _sPrice) * 100).toFixed(2);
+    const difference = (((Big(_uPrice).minus(Big(_sPrice))).div(Big(_sPrice))).times(100)).toFixed(2);
     console.log(`Price difference successfully calculated: ${difference}%`);
 
     return difference;
@@ -137,7 +146,7 @@ async function simulate(_amount, _routerPath, _token0, _token1) {
     const amountIn = formatUnits(trade1[0], 18);
     const amountOut = formatUnits(trade2[1], 18);
 
-    console.log(`Simulation successful: Amount In=<span class="math-inline">\{amountIn\}, Amount Out\=</span>{amountOut}`);
+    console.log(`Simulation successful: Amount In=${amountIn}, Amount Out=${amountOut}`);
 
     return { amountIn, amountOut };
   } catch (error) {
@@ -146,7 +155,8 @@ async function simulate(_amount, _routerPath, _token0, _token1) {
   }
 }
 
-function applySlippageTolerance(amount, slippageTolerance) {
+function applySlippageTolerance(amount) {
+  const slippageTolerance = 0.5; // Hardcoded slippage tolerance in percentage
   console.log(`Attempting to apply slippage tolerance: ${slippageTolerance}% to amount: ${amount}`);
 
   try {
@@ -162,10 +172,11 @@ function applySlippageTolerance(amount, slippageTolerance) {
 }
 
 async function calculateProfit(amountIn, amountOut, gasLimit, gasPrice) {
-  console.log(`Attempting to calculate profit: Amount In=<span class="math-inline">\{amountIn\}, Amount Out\=</span>{amountOut}`);
+  console.log(`Attempting to calculate profit: Amount In=${amountIn}, Amount Out=${amountOut}`);
 
   try {
-    const gasPriceEth = ether.formatUnits(gasPrice, "ether"); // Convert gasPrice to ETH
+    // Convert gas price to ETH manually
+    const gasPriceEth = formatUnits(gasPrice, 18);
     const estimatedGasCost = Big(gasLimit).times(Big(gasPriceEth));
     const profitBeforeGas = Big(amountOut).minus(Big(amountIn));
     const profit = profitBeforeGas.minus(estimatedGasCost);
